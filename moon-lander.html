@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Retro Moon Lander</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background: #1a1a1a;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            font-family: 'Courier New', monospace;
+            color: #ff8c00;
+        }
+        
+        #gameContainer {
+            text-align: center;
+        }
+        
+        canvas {
+            border: 2px solid #4a4a4a;
+            background: #0a0a0a;
+            display: block;
+            margin: 0 auto;
+        }
+        
+        #ui {
+            margin-top: 20px;
+            display: flex;
+            justify-content: space-around;
+            max-width: 800px;
+            margin-left: auto;
+            margin-right: auto;
+            padding: 15px;
+            background: #2a2a2a;
+            border-radius: 8px;
+            border: 1px solid #4a4a4a;
+        }
+        
+        .stat {
+            font-size: 18px;
+            color: #cccccc;
+        }
+        
+        .stat span {
+            color: #ff8c00;
+            font-weight: bold;
+        }
+        
+        .warning {
+            color: #ff4444 !important;
+        }
+    </style>
+</head>
+<body>
+    <div id="gameContainer">
+        <canvas id="gameCanvas" width="800" height="600"></canvas>
+        <div id="ui">
+            <div class="stat">Fuel: <span id="fuelDisplay">100</span></div>
+            <div class="stat">Vertical Speed: <span id="vyDisplay">0.0</span></div>
+            <div class="stat">Horizontal Speed: <span id="vxDisplay">0.0</span></div>
+            <div class="stat">Score: <span id="scoreDisplay">0</span></div>
+            <div class="stat">High Score: <span id="highScoreDisplay">0</span></div>
+            <div class="stat">Landings: <span id="landingsDisplay">0</span></div>
+            <div class="stat">Crashes: <span id="crashesDisplay">0</span></div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        // Game state
+        let gameState = 'start'; // 'start', 'playing', 'landed', 'crashed'
+        let landings = 0;
+        let crashes = 0;
+        let score = 0;
+        let highScore = 0;
+        
+        // Lander properties
+        let lander = {
+            x: canvas.width / 2,
+            y: 50,
+            vx: 0,
+            vy: 0,
+            width: 40,
+            height: 40,
+            fuel: 100,
+            rotation: 0
+        };
+        
+        // Physics constants
+        const GRAVITY = 0.05;
+        const MAIN_THRUST = -0.12;
+        const SIDE_THRUST = 0.03;
+        const FUEL_CONSUMPTION = 0.3;
+        const SAFE_LANDING_VY = 1.5;
+        const SAFE_LANDING_VX = 1.0;
+        const MAX_FUEL = 100;
+        const FUEL_REFILL_AMOUNT = 150;
+        
+        // Input tracking
+        const keys = {};
+        
+        // Landing pads
+        const landingPads = [
+            { x: 100, y: canvas.height - 30, width: 80, height: 10, points: 1 },
+            { x: 400, y: canvas.height - 30, width: 100, height: 10, points: 1 },
+            { x: 550, y: canvas.height - 30, width: 50, height: 10, points: 2 }, // Bonus pad (smaller)
+            { x: 650, y: canvas.height - 30, width: 80, height: 10, points: 1 }
+        ];
+        
+        // Load Kiro logo
+        const logoImg = new Image();
+        logoImg.src = 'kiro-logo.png';
+        
+        // Spaceship celebration animation
+        const SPACESHIP_DURATION = 4000; // 4 seconds
+        let spaceshipAnimation = {
+            active: false,
+            x: -100,
+            y: 100,
+            vx: 3,
+            startTime: 0
+        };
+        
+        // Bonus pad feedback
+        let bonusFeedback = {
+            active: false,
+            startTime: 0,
+            duration: 2000
+        };
+        
+        // Event listeners
+        document.addEventListener('keydown', (e) => {
+            keys[e.code] = true;
+            if (e.code === 'Space') {
+                e.preventDefault();
+                if (gameState === 'start') {
+                    startGame();
+                } else if (gameState === 'crashed' || gameState === 'out_of_fuel') {
+                    restartGame();
+                } else if (gameState === 'landed') {
+                    // Allow takeoff from landed state
+                    gameState = 'playing';
+                }
+            }
+        });
+        
+        document.addEventListener('keyup', (e) => {
+            keys[e.code] = false;
+        });
+        
+        canvas.addEventListener('click', () => {
+            if (gameState === 'start') {
+                startGame();
+            } else if (gameState === 'crashed' || gameState === 'out_of_fuel') {
+                restartGame();
+            }
+        });
+        
+        function startGame() {
+            gameState = 'playing';
+        }
+        
+        function restartGame() {
+            lander.x = canvas.width / 2;
+            lander.y = 50;
+            lander.vx = 0;
+            lander.vy = 0;
+            lander.fuel = 100;
+            lander.rotation = 0;
+            score = 0; // Reset score but keep high score
+            // Stop any active animations
+            spaceshipAnimation.active = false;
+            bonusFeedback.active = false;
+            gameState = 'playing';
+        }
+        
+        function update() {
+            if (gameState !== 'playing') return;
+            
+            // Check for out of fuel condition
+            if (lander.fuel <= 0) {
+                gameState = 'out_of_fuel';
+                return;
+            }
+            
+            // Apply gravity
+            lander.vy += GRAVITY;
+            
+            // Handle thrust
+            let thrusting = false;
+            let sideThrusting = false;
+            
+            if (lander.fuel > 0) {
+                // Main thrust
+                if (keys['ArrowUp'] || keys['Space']) {
+                    lander.vy += MAIN_THRUST;
+                    lander.fuel -= FUEL_CONSUMPTION;
+                    thrusting = true;
+                }
+                
+                // Side thrust
+                if (keys['ArrowLeft']) {
+                    lander.vx -= SIDE_THRUST;
+                    lander.fuel -= FUEL_CONSUMPTION * 0.5;
+                    sideThrusting = true;
+                }
+                if (keys['ArrowRight']) {
+                    lander.vx += SIDE_THRUST;
+                    lander.fuel -= FUEL_CONSUMPTION * 0.5;
+                    sideThrusting = true;
+                }
+            }
+            
+            // Clamp fuel
+            lander.fuel = Math.max(0, lander.fuel);
+            
+            // Update position
+            lander.x += lander.vx;
+            lander.y += lander.vy;
+            
+            // Check collisions
+            checkCollisions();
+            
+            // Update UI
+            updateUI();
+        }
+        
+        function checkCollisions() {
+            const landerBottom = lander.y + lander.height / 2;
+            const landerLeft = lander.x - lander.width / 2;
+            const landerRight = lander.x + lander.width / 2;
+            
+            // Check landing pads
+            for (let pad of landingPads) {
+                if (landerBottom >= pad.y && 
+                    landerRight > pad.x && 
+                    landerLeft < pad.x + pad.width) {
+                    
+                    // Check if safe landing
+                    if (Math.abs(lander.vy) < SAFE_LANDING_VY && 
+                        Math.abs(lander.vx) < SAFE_LANDING_VX) {
+                        gameState = 'landed';
+                        landings++;
+                        score += pad.points;
+                        // Trigger bonus feedback for bonus pad
+                        if (pad.points === 2) {
+                            bonusFeedback.active = true;
+                            bonusFeedback.startTime = Date.now();
+                        }
+                        // Check for new high score and trigger spaceship
+                        if (score > highScore) {
+                            highScore = score;
+                            triggerSpaceship();
+                        }
+                        // Refuel on successful landing
+                        lander.fuel = Math.min(MAX_FUEL, lander.fuel + FUEL_REFILL_AMOUNT);
+                        lander.vy = 0;
+                        lander.vx = 0;
+                    } else {
+                        gameState = 'crashed';
+                        crashes++;
+                    }
+                    return;
+                }
+            }
+            
+            // Check ground collision
+            if (landerBottom >= canvas.height - 20) {
+                gameState = 'crashed';
+                crashes++;
+            }
+            
+            // Check side walls
+            if (landerLeft <= 0 || landerRight >= canvas.width) {
+                gameState = 'crashed';
+                crashes++;
+            }
+        }
+        
+        function draw() {
+            // Clear canvas
+            ctx.fillStyle = '#0a0a0a';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Draw stars
+            drawStars();
+            
+            // Draw ground
+            ctx.fillStyle = '#3a3a3a';
+            ctx.fillRect(0, canvas.height - 20, canvas.width, 20);
+            
+            // Draw landing pads
+            for (let pad of landingPads) {
+                // Use purple for bonus pad, orange for standard pads
+                if (pad.points === 2) {
+                    // Add pulsing glow effect to bonus pad
+                    const pulse = Math.sin(Date.now() / 300) * 0.3 + 0.7;
+                    ctx.shadowBlur = 15;
+                    ctx.shadowColor = '#790ECB';
+                    ctx.fillStyle = '#790ECB'; // Kiro purple for bonus pad
+                    ctx.globalAlpha = pulse;
+                    ctx.fillRect(pad.x, pad.y, pad.width, pad.height);
+                    ctx.globalAlpha = 1.0;
+                    ctx.shadowBlur = 0;
+                } else {
+                    ctx.fillStyle = '#ff8c00';
+                    ctx.fillRect(pad.x, pad.y, pad.width, pad.height);
+                }
+                
+                // Draw pad markers
+                if (pad.points === 2) {
+                    ctx.strokeStyle = '#9a3edb'; // Lighter purple for bonus pad markers
+                } else {
+                    ctx.strokeStyle = '#ffaa33';
+                }
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(pad.x, pad.y);
+                ctx.lineTo(pad.x, pad.y - 10);
+                ctx.moveTo(pad.x + pad.width, pad.y);
+                ctx.lineTo(pad.x + pad.width, pad.y - 10);
+                ctx.stroke();
+                
+                // Draw "BONUS" label on bonus pad
+                if (pad.points === 2) {
+                    ctx.fillStyle = '#ffffff';
+                    ctx.font = 'bold 10px Courier New';
+                    ctx.textAlign = 'center';
+                    ctx.fillText('BONUS', pad.x + pad.width / 2, pad.y - 15);
+                }
+            }
+            
+            // Draw lander
+            drawLander();
+            
+            // Draw spaceship celebration
+            drawSpaceship();
+            
+            // Draw bonus feedback
+            drawBonusFeedback();
+            
+            // Draw state-specific screens
+            if (gameState === 'start') {
+                drawStartScreen();
+            } else if (gameState === 'landed') {
+                drawLandedScreen();
+            } else if (gameState === 'crashed') {
+                drawCrashedScreen();
+            } else if (gameState === 'out_of_fuel') {
+                drawOutOfFuelScreen();
+            }
+        }
+        
+        function drawStars() {
+            ctx.fillStyle = '#666666';
+            for (let i = 0; i < 50; i++) {
+                const x = (i * 137) % canvas.width;
+                const y = (i * 211) % (canvas.height - 100);
+                ctx.fillRect(x, y, 2, 2);
+            }
+        }
+        
+        function drawLander() {
+            ctx.save();
+            ctx.translate(lander.x, lander.y);
+            
+            // Draw jetpack flames when thrusting
+            const thrusting = (keys['ArrowUp'] || keys['Space']) && lander.fuel > 0;
+            if (thrusting && gameState === 'playing') {
+                drawJetpack();
+            }
+            
+            // Draw Kiro logo
+            if (logoImg.complete) {
+                ctx.drawImage(logoImg, -lander.width / 2, -lander.height / 2, lander.width, lander.height);
+            } else {
+                // Fallback rectangle if image not loaded
+                ctx.fillStyle = '#cccccc';
+                ctx.fillRect(-lander.width / 2, -lander.height / 2, lander.width, lander.height);
+            }
+            
+            ctx.restore();
+        }
+        
+        function drawJetpack() {
+            // Main thrust flame
+            const flameHeight = 15 + Math.random() * 10;
+            ctx.fillStyle = '#ff8c00';
+            ctx.beginPath();
+            ctx.moveTo(-8, lander.height / 2);
+            ctx.lineTo(0, lander.height / 2 + flameHeight);
+            ctx.lineTo(8, lander.height / 2);
+            ctx.closePath();
+            ctx.fill();
+            
+            // Inner flame
+            ctx.fillStyle = '#ffaa33';
+            ctx.beginPath();
+            ctx.moveTo(-5, lander.height / 2);
+            ctx.lineTo(0, lander.height / 2 + flameHeight * 0.6);
+            ctx.lineTo(5, lander.height / 2);
+            ctx.closePath();
+            ctx.fill();
+        }
+        
+        function drawStartScreen() {
+            ctx.fillStyle = 'rgba(10, 10, 10, 0.85)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            ctx.fillStyle = '#ff8c00';
+            ctx.font = 'bold 48px Courier New';
+            ctx.textAlign = 'center';
+            ctx.fillText('RETRO MOON LANDER', canvas.width / 2, canvas.height / 2 - 80);
+            
+            ctx.fillStyle = '#cccccc';
+            ctx.font = '24px Courier New';
+            ctx.fillText('CONTROLS:', canvas.width / 2, canvas.height / 2 - 20);
+            ctx.font = '18px Courier New';
+            ctx.fillText('UP / SPACE: Main Thrust', canvas.width / 2, canvas.height / 2 + 10);
+            ctx.fillText('LEFT / RIGHT: Side Thrust', canvas.width / 2, canvas.height / 2 + 40);
+            
+            ctx.fillStyle = '#ff8c00';
+            ctx.font = 'bold 20px Courier New';
+            ctx.fillText('Land gently on orange pads!', canvas.width / 2, canvas.height / 2 + 90);
+            
+            ctx.fillStyle = '#ffaa33';
+            ctx.font = '24px Courier New';
+            ctx.fillText('Press SPACE or Click to Start', canvas.width / 2, canvas.height / 2 + 140);
+        }
+        
+        function drawLandedScreen() {
+            ctx.fillStyle = 'rgba(10, 10, 10, 0.7)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            ctx.fillStyle = '#00ff00';
+            ctx.font = 'bold 48px Courier New';
+            ctx.textAlign = 'center';
+            ctx.fillText('SUCCESSFUL LANDING!', canvas.width / 2, canvas.height / 2 - 40);
+            
+            ctx.fillStyle = '#ffaa33';
+            ctx.font = '24px Courier New';
+            ctx.fillText('Fuel Refilled!', canvas.width / 2, canvas.height / 2 + 10);
+            
+            ctx.fillStyle = '#cccccc';
+            ctx.font = '20px Courier New';
+            ctx.fillText('Press THRUST to Take Off', canvas.width / 2, canvas.height / 2 + 60);
+        }
+        
+        function drawBonusFeedback() {
+            if (!bonusFeedback.active) return;
+            
+            const elapsed = Date.now() - bonusFeedback.startTime;
+            if (elapsed > bonusFeedback.duration) {
+                bonusFeedback.active = false;
+                return;
+            }
+            
+            // Fade out effect
+            const alpha = 1 - (elapsed / bonusFeedback.duration);
+            ctx.globalAlpha = alpha;
+            
+            ctx.fillStyle = '#790ECB';
+            ctx.font = 'bold 36px Courier New';
+            ctx.textAlign = 'center';
+            ctx.fillText('+2 BONUS!', canvas.width / 2, canvas.height / 2 - 100);
+            
+            ctx.fillStyle = '#9a3edb';
+            ctx.font = '20px Courier New';
+            ctx.fillText('⭐ Perfect Landing! ⭐', canvas.width / 2, canvas.height / 2 - 60);
+            
+            ctx.globalAlpha = 1.0;
+        }
+        
+        function drawCrashedScreen() {
+            ctx.fillStyle = 'rgba(10, 10, 10, 0.7)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            ctx.fillStyle = '#ff4444';
+            ctx.font = 'bold 48px Courier New';
+            ctx.textAlign = 'center';
+            ctx.fillText('CRASHED!', canvas.width / 2, canvas.height / 2 - 20);
+            
+            ctx.fillStyle = '#cccccc';
+            ctx.font = '20px Courier New';
+            ctx.fillText('Too fast or missed the pad!', canvas.width / 2, canvas.height / 2 + 20);
+            ctx.fillText('Press SPACE or Click to Try Again', canvas.width / 2, canvas.height / 2 + 60);
+        }
+        
+        function drawOutOfFuelScreen() {
+            ctx.fillStyle = 'rgba(10, 10, 10, 0.7)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            ctx.fillStyle = '#ff4444';
+            ctx.font = 'bold 48px Courier New';
+            ctx.textAlign = 'center';
+            ctx.fillText('OUT OF FUEL!', canvas.width / 2, canvas.height / 2 - 20);
+            
+            ctx.fillStyle = '#cccccc';
+            ctx.font = '20px Courier New';
+            ctx.fillText('You ran out of fuel!', canvas.width / 2, canvas.height / 2 + 20);
+            ctx.fillText('Press SPACE or Click to Try Again', canvas.width / 2, canvas.height / 2 + 60);
+        }
+        
+        function triggerSpaceship() {
+            // Only trigger if not already active
+            if (!spaceshipAnimation.active) {
+                spaceshipAnimation.active = true;
+                spaceshipAnimation.x = -100;
+                spaceshipAnimation.startTime = Date.now();
+            }
+        }
+        
+        function updateSpaceship() {
+            if (spaceshipAnimation.active) {
+                spaceshipAnimation.x += spaceshipAnimation.vx;
+                
+                // Check if animation duration has elapsed
+                const elapsed = Date.now() - spaceshipAnimation.startTime;
+                if (elapsed > SPACESHIP_DURATION) {
+                    spaceshipAnimation.active = false;
+                }
+                
+                // Also remove spaceship after it crosses the screen
+                if (spaceshipAnimation.x > canvas.width + 100) {
+                    spaceshipAnimation.active = false;
+                }
+            }
+        }
+        
+        function drawSpaceship() {
+            if (!spaceshipAnimation.active) return;
+            
+            ctx.save();
+            ctx.translate(spaceshipAnimation.x, spaceshipAnimation.y);
+            
+            // Draw spaceship body (large)
+            ctx.fillStyle = '#cccccc';
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.lineTo(60, -15);
+            ctx.lineTo(60, 15);
+            ctx.closePath();
+            ctx.fill();
+            
+            // Draw spaceship window
+            ctx.fillStyle = '#790ECB'; // Kiro purple
+            ctx.beginPath();
+            ctx.arc(40, 0, 8, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Draw spaceship wings
+            ctx.fillStyle = '#9a3edb'; // Lighter purple
+            ctx.beginPath();
+            ctx.moveTo(20, -15);
+            ctx.lineTo(10, -25);
+            ctx.lineTo(30, -15);
+            ctx.closePath();
+            ctx.fill();
+            
+            ctx.beginPath();
+            ctx.moveTo(20, 15);
+            ctx.lineTo(10, 25);
+            ctx.lineTo(30, 15);
+            ctx.closePath();
+            ctx.fill();
+            
+            // Draw engine glow
+            ctx.fillStyle = '#ff8c00';
+            ctx.beginPath();
+            ctx.moveTo(0, -5);
+            ctx.lineTo(-15, 0);
+            ctx.lineTo(0, 5);
+            ctx.closePath();
+            ctx.fill();
+            
+            ctx.restore();
+            
+            // Draw congratulatory text
+            ctx.fillStyle = '#790ECB';
+            ctx.font = 'bold 36px Courier New';
+            ctx.textAlign = 'center';
+            ctx.fillText('NEW HIGH SCORE!', canvas.width / 2, 50);
+            
+            ctx.fillStyle = '#ffaa33';
+            ctx.font = '24px Courier New';
+            ctx.fillText('🎉 Congratulations! 🎉', canvas.width / 2, 85);
+        }
+        
+        function updateUI() {
+            document.getElementById('fuelDisplay').textContent = Math.floor(lander.fuel);
+            document.getElementById('vyDisplay').textContent = Math.abs(lander.vy).toFixed(2);
+            document.getElementById('vxDisplay').textContent = Math.abs(lander.vx).toFixed(2);
+            document.getElementById('scoreDisplay').textContent = score;
+            document.getElementById('highScoreDisplay').textContent = highScore;
+            document.getElementById('landingsDisplay').textContent = landings;
+            document.getElementById('crashesDisplay').textContent = crashes;
+            
+            // Warning colors
+            const vyEl = document.getElementById('vyDisplay');
+            const vxEl = document.getElementById('vxDisplay');
+            const fuelEl = document.getElementById('fuelDisplay');
+            
+            vyEl.className = Math.abs(lander.vy) > SAFE_LANDING_VY ? 'warning' : '';
+            vxEl.className = Math.abs(lander.vx) > SAFE_LANDING_VX ? 'warning' : '';
+            fuelEl.className = lander.fuel < 20 ? 'warning' : '';
+        }
+        
+        // Game loop
+        function gameLoop() {
+            update();
+            updateSpaceship();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+        
+        // Start the game loop
+        gameLoop();
+    </script>
+</body>
+</html>

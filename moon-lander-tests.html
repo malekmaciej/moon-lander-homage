@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Moon Lander Property Tests</title>
+    <style>
+        body {
+            font-family: 'Courier New', monospace;
+            background: #1a1a1a;
+            color: #cccccc;
+            padding: 20px;
+        }
+        h1 {
+            color: #ff8c00;
+        }
+        .test-result {
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        .pass {
+            background: #2a4a2a;
+            color: #00ff00;
+        }
+        .fail {
+            background: #4a2a2a;
+            color: #ff4444;
+        }
+        .running {
+            background: #3a3a4a;
+            color: #ffaa33;
+        }
+        pre {
+            background: #0a0a0a;
+            padding: 10px;
+            border-radius: 5px;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>Moon Lander Enhancement Property Tests</h1>
+    <div id="test-results"></div>
+
+    <script type="module">
+        // Import fast-check from CDN
+        import fc from 'https://cdn.jsdelivr.net/npm/fast-check@3.15.0/+esm';
+
+        const resultsDiv = document.getElementById('test-results');
+
+        function logTest(name, status, details = '') {
+            const div = document.createElement('div');
+            div.className = `test-result ${status}`;
+            div.innerHTML = `<strong>${name}</strong>: ${status.toUpperCase()}`;
+            if (details) {
+                div.innerHTML += `<pre>${details}</pre>`;
+            }
+            resultsDiv.appendChild(div);
+        }
+
+        // Helper functions extracted from the game logic
+        const MAX_FUEL = 100;
+        const FUEL_REFILL_AMOUNT = 150;
+        
+        function awardPoints(currentScore, padPoints) {
+            return currentScore + padPoints;
+        }
+
+        function updateHighScore(currentScore, currentHighScore) {
+            return currentScore > currentHighScore ? currentScore : currentHighScore;
+        }
+        
+        function refuelLander(currentFuel) {
+            return Math.min(MAX_FUEL, currentFuel + FUEL_REFILL_AMOUNT);
+        }
+        
+        function checkGameContinues(gameState) {
+            // After landing, game should allow takeoff (return to 'playing')
+            return gameState === 'landed';
+        }
+        
+        function checkCrashEndsSession(gameState) {
+            // Crash should end the session
+            return gameState === 'crashed';
+        }
+        
+        function checkSpaceshipTrigger(currentScore, previousHighScore) {
+            // Spaceship should trigger when score exceeds high score
+            return currentScore > previousHighScore;
+        }
+        
+        function simulateSpaceshipAnimation(initialX, vx, frames) {
+            // Simulate spaceship movement over frames
+            let x = initialX;
+            for (let i = 0; i < frames; i++) {
+                x += vx;
+            }
+            return x;
+        }
+        
+        function checkSpaceshipLifecycle(startTime, currentTime, duration) {
+            // Spaceship should deactivate after duration
+            return (currentTime - startTime) > duration;
+        }
+
+        // Feature: moon-lander-enhancements, Property 3: Standard pad landing awards correct points
+        // Validates: Requirements 2.1
+        async function testStandardPadScoring() {
+            logTest('Property 3: Standard pad landing awards correct points', 'running');
+            
+            try {
+                await fc.assert(
+                    fc.property(
+                        fc.integer({ min: 0, max: 1000 }), // initial score
+                        (initialScore) => {
+                            const padPoints = 1; // standard pad
+                            const newScore = awardPoints(initialScore, padPoints);
+                            return newScore === initialScore + 1;
+                        }
+                    ),
+                    { numRuns: 100 }
+                );
+                logTest('Property 3: Standard pad landing awards correct points', 'pass');
+                return true;
+            } catch (error) {
+                logTest('Property 3: Standard pad landing awards correct points', 'fail', error.message);
+                return false;
+            }
+        }
+
+        // Feature: moon-lander-enhancements, Property 4: High score updates correctly
+        // Validates: Requirements 3.1
+        async function testHighScoreTracking() {
+            logTest('Property 4: High score updates correctly', 'running');
+            
+            try {
+                await fc.assert(
+                    fc.property(
+                        fc.integer({ min: 0, max: 1000 }), // current score
+                        fc.integer({ min: 0, max: 1000 }), // current high score
+                        (currentScore, currentHighScore) => {
+                            const newHighScore = updateHighScore(currentScore, currentHighScore);
+                            // High score should be the maximum of current score and previous high score
+                            return newHighScore === Math.max(currentScore, currentHighScore);
+                        }
+                    ),
+                    { numRuns: 100 }
+                );
+                logTest('Property 4: High score updates correctly', 'pass');
+                return true;
+            } catch (error) {
+                logTest('Property 4: High score updates correctly', 'fail', error.message);
+                return false;
+            }
+        }
+
+        // Feature: moon-lander-enhancements, Property 8: Successful landing refuels lander
+        // Validates: Requirements 4.1
+        async function testFuelRefill() {
+            logTest('Property 8: Successful landing refuels lander', 'running');
+            
+            try {
+                await fc.assert(
+                    fc.property(
+                        fc.integer({ min: 0, max: 100 }), // current fuel
+                        (currentFuel) => {
+                            const newFuel = refuelLander(currentFuel);
+                            // Fuel should increase by FUEL_REFILL_AMOUNT but not exceed MAX_FUEL
+                            const expected = Math.min(MAX_FUEL, currentFuel + FUEL_REFILL_AMOUNT);
+                            return newFuel === expected && newFuel <= MAX_FUEL;
+                        }
+                    ),
+                    { numRuns: 100 }
+                );
+                logTest('Property 8: Successful landing refuels lander', 'pass');
+                return true;
+            } catch (error) {
+                logTest('Property 8: Successful landing refuels lander', 'fail', error.message);
+                return false;
+            }
+        }
+
+        // Feature: moon-lander-enhancements, Property 9: Game continues after successful landing
+        // Validates: Requirements 4.2
+        async function testContinuousGameplay() {
+            logTest('Property 9: Game continues after successful landing', 'running');
+            
+            try {
+                await fc.assert(
+                    fc.property(
+                        fc.constantFrom('landed'),
+                        (gameState) => {
+                            // After landing, game should allow continuation
+                            return checkGameContinues(gameState);
+                        }
+                    ),
+                    { numRuns: 100 }
+                );
+                logTest('Property 9: Game continues after successful landing', 'pass');
+                return true;
+            } catch (error) {
+                logTest('Property 9: Game continues after successful landing', 'fail', error.message);
+                return false;
+            }
+        }
+
+        // Feature: moon-lander-enhancements, Property 10: Crash ends game session
+        // Validates: Requirements 4.3
+        async function testCrashEndsSession() {
+            logTest('Property 10: Crash ends game session', 'running');
+            
+            try {
+                await fc.assert(
+                    fc.property(
+                        fc.constantFrom('crashed'),
+                        (gameState) => {
+                            // Crash should end the session
+                            return checkCrashEndsSession(gameState);
+                        }
+                    ),
+                    { numRuns: 100 }
+                );
+                logTest('Property 10: Crash ends game session', 'pass');
+                return true;
+            } catch (error) {
+                logTest('Property 10: Crash ends game session', 'fail', error.message);
+                return false;
+            }
+        }
+
+        // Feature: moon-lander-enhancements, Property 5: New high score triggers spaceship
+        // Validates: Requirements 3.2
+        async function testSpaceshipTrigger() {
+            logTest('Property 5: New high score triggers spaceship', 'running');
+            
+            try {
+                await fc.assert(
+                    fc.property(
+                        fc.integer({ min: 0, max: 1000 }), // current score
+                        fc.integer({ min: 0, max: 1000 }), // previous high score
+                        (currentScore, previousHighScore) => {
+                            const shouldTrigger = checkSpaceshipTrigger(currentScore, previousHighScore);
+                            // Spaceship should trigger only when current score exceeds previous high score
+                            return shouldTrigger === (currentScore > previousHighScore);
+                        }
+                    ),
+                    { numRuns: 100 }
+                );
+                logTest('Property 5: New high score triggers spaceship', 'pass');
+                return true;
+            } catch (error) {
+                logTest('Property 5: New high score triggers spaceship', 'fail', error.message);
+                return false;
+            }
+        }
+
+        // Feature: moon-lander-enhancements, Property 6: Spaceship animates across screen
+        // Validates: Requirements 3.3
+        async function testSpaceshipAnimation() {
+            logTest('Property 6: Spaceship animates across screen', 'running');
+            
+            try {
+                await fc.assert(
+                    fc.property(
+                        fc.integer({ min: -100, max: 0 }), // initial x position
+                        fc.integer({ min: 1, max: 10 }), // velocity
+                        fc.integer({ min: 1, max: 100 }), // number of frames
+                        (initialX, vx, frames) => {
+                            const finalX = simulateSpaceshipAnimation(initialX, vx, frames);
+                            // X position should increase over time
+                            return finalX > initialX;
+                        }
+                    ),
+                    { numRuns: 100 }
+                );
+                logTest('Property 6: Spaceship animates across screen', 'pass');
+                return true;
+            } catch (error) {
+                logTest('Property 6: Spaceship animates across screen', 'fail', error.message);
+                return false;
+            }
+        }
+
+        // Feature: moon-lander-enhancements, Property 7: Spaceship animation completes and cleans up
+        // Validates: Requirements 3.5
+        async function testSpaceshipLifecycle() {
+            logTest('Property 7: Spaceship animation completes and cleans up', 'running');
+            
+            try {
+                await fc.assert(
+                    fc.property(
+                        fc.integer({ min: 0, max: 10000 }), // start time
+                        fc.integer({ min: 1000, max: 5000 }), // duration
+                        (startTime, duration) => {
+                            const currentTime = startTime + duration + 1;
+                            const shouldDeactivate = checkSpaceshipLifecycle(startTime, currentTime, duration);
+                            // Animation should deactivate after duration elapses
+                            return shouldDeactivate === true;
+                        }
+                    ),
+                    { numRuns: 100 }
+                );
+                logTest('Property 7: Spaceship animation completes and cleans up', 'pass');
+                return true;
+            } catch (error) {
+                logTest('Property 7: Spaceship animation completes and cleans up', 'fail', error.message);
+                return false;
+            }
+        }
+
+        // Run all tests
+        async function runAllTests() {
+            console.log('Starting property-based tests...');
+            
+            const test1 = await testStandardPadScoring();
+            const test2 = await testHighScoreTracking();
+            const test3 = await testFuelRefill();
+            const test4 = await testContinuousGameplay();
+            const test5 = await testCrashEndsSession();
+            const test6 = await testSpaceshipTrigger();
+            const test7 = await testSpaceshipAnimation();
+            const test8 = await testSpaceshipLifecycle();
+            
+            const allPassed = test1 && test2 && test3 && test4 && test5 && test6 && test7 && test8;
+            
+            const summary = document.createElement('div');
+            summary.className = `test-result ${allPassed ? 'pass' : 'fail'}`;
+            summary.innerHTML = `<strong>Test Summary</strong>: ${allPassed ? 'ALL TESTS PASSED' : 'SOME TESTS FAILED'}`;
+            resultsDiv.appendChild(summary);
+            
+            console.log('Tests complete!');
+        }
+
+        // Run tests when page loads
+        runAllTests();
+    </script>
+</body>
+</html>

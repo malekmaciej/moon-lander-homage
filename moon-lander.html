@@ -85,6 +85,13 @@
         let score = 0;
         let highScore = 0;
         
+        // Scoring delay system
+        let scoringDelay = {
+            active: false,
+            startTime: 0,
+            duration: 1000 // 1 second delay
+        };
+        
         // Lander properties
         let lander = {
             x: canvas.width / 2,
@@ -149,8 +156,15 @@
                 } else if (gameState === 'crashed' || gameState === 'out_of_fuel') {
                     restartGame();
                 } else if (gameState === 'landed') {
-                    // Allow takeoff from landed state
+                    // Reset to starting position after successful landing
+                    lander.x = canvas.width / 2;
+                    lander.y = 50;
+                    lander.vx = 0;
+                    lander.vy = 0;
+                    lander.rotation = 0;
                     gameState = 'playing';
+                    scoringDelay.active = true;
+                    scoringDelay.startTime = Date.now();
                 }
             }
         });
@@ -169,6 +183,9 @@
         
         function startGame() {
             gameState = 'playing';
+            // Start scoring delay when game begins
+            scoringDelay.active = true;
+            scoringDelay.startTime = Date.now();
         }
         
         function restartGame() {
@@ -182,11 +199,22 @@
             // Stop any active animations
             spaceshipAnimation.active = false;
             bonusFeedback.active = false;
+            // Start scoring delay when restarting
+            scoringDelay.active = true;
+            scoringDelay.startTime = Date.now();
             gameState = 'playing';
         }
         
         function update() {
             if (gameState !== 'playing') return;
+            
+            // Update scoring delay
+            if (scoringDelay.active) {
+                const elapsed = Date.now() - scoringDelay.startTime;
+                if (elapsed >= scoringDelay.duration) {
+                    scoringDelay.active = false;
+                }
+            }
             
             // Check for out of fuel condition
             if (lander.fuel <= 0) {
@@ -252,17 +280,22 @@
                         Math.abs(lander.vx) < SAFE_LANDING_VX) {
                         gameState = 'landed';
                         landings++;
-                        score += pad.points;
-                        // Trigger bonus feedback for bonus pad
-                        if (pad.points === 2) {
-                            bonusFeedback.active = true;
-                            bonusFeedback.startTime = Date.now();
+                        
+                        // Only award points if scoring delay has passed
+                        if (!scoringDelay.active) {
+                            score += pad.points;
+                            // Trigger bonus feedback for bonus pad
+                            if (pad.points === 2) {
+                                bonusFeedback.active = true;
+                                bonusFeedback.startTime = Date.now();
+                            }
+                            // Check for new high score and trigger spaceship
+                            if (score > highScore) {
+                                highScore = score;
+                                triggerSpaceship();
+                            }
                         }
-                        // Check for new high score and trigger spaceship
-                        if (score > highScore) {
-                            highScore = score;
-                            triggerSpaceship();
-                        }
+                        
                         // Refuel on successful landing
                         lander.fuel = Math.min(MAX_FUEL, lander.fuel + FUEL_REFILL_AMOUNT);
                         lander.vy = 0;
@@ -349,6 +382,9 @@
             
             // Draw bonus feedback
             drawBonusFeedback();
+            
+            // Draw scoring delay indicator
+            drawScoringDelayIndicator();
             
             // Draw state-specific screens
             if (gameState === 'start') {
@@ -455,6 +491,38 @@
             ctx.fillStyle = '#cccccc';
             ctx.font = '20px Courier New';
             ctx.fillText('Press THRUST to Take Off', canvas.width / 2, canvas.height / 2 + 60);
+        }
+        
+        function drawScoringDelayIndicator() {
+            // Only show delay indicator when actively playing
+            if (!scoringDelay.active || gameState !== 'playing') return;
+            
+            const elapsed = Date.now() - scoringDelay.startTime;
+            const remaining = Math.max(0, scoringDelay.duration - elapsed);
+            const seconds = Math.ceil(remaining / 1000);
+            
+            if (seconds > 0) {
+                // Draw countdown text (smaller and positioned better)
+                ctx.fillStyle = '#ff8c00';
+                ctx.font = 'bold 18px Courier New';
+                ctx.textAlign = 'center';
+                ctx.fillText(`Scoring in ${seconds}...`, canvas.width / 2, 30);
+                
+                // Draw progress bar (smaller)
+                const barWidth = 150;
+                const barHeight = 6;
+                const barX = (canvas.width - barWidth) / 2;
+                const barY = 40;
+                const progress = 1 - (remaining / scoringDelay.duration);
+                
+                // Background
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+                ctx.fillRect(barX, barY, barWidth, barHeight);
+                
+                // Progress
+                ctx.fillStyle = '#ff8c00';
+                ctx.fillRect(barX, barY, barWidth * progress, barHeight);
+            }
         }
         
         function drawBonusFeedback() {

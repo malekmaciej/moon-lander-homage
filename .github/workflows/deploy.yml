@@ -1,0 +1,91 @@
+name: Deploy Moon Lander to AWS
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+env:
+  AWS_REGION: us-east-1
+  S3_BUCKET: ${{ secrets.S3_BUCKET_NAME }}
+  CLOUDFRONT_DISTRIBUTION_ID: ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js (for build tools if needed)
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        
+    - name: Install dependencies (if package.json exists)
+      run: |
+        if [ -f package.json ]; then
+          npm ci
+        fi
+        
+    - name: Validate HTML/CSS/JS
+      run: |
+        # Basic validation - can be enhanced with linters
+        echo "Validating game files..."
+        if [ ! -f moon-lander.html ]; then
+          echo "Error: moon-lander.html not found"
+          exit 1
+        fi
+        if [ ! -f kiro-logo.png ]; then
+          echo "Error: kiro-logo.png not found"
+          exit 1
+        fi
+        echo "Validation passed!"
+        
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+        
+    - name: Deploy to S3
+      run: |
+        # Sync files to S3 bucket
+        aws s3 sync . s3://$S3_BUCKET \
+          --exclude ".git/*" \
+          --exclude ".github/*" \
+          --exclude ".kiro/*" \
+          --exclude ".vscode/*" \
+          --exclude "README.md" \
+          --exclude "package*.json" \
+          --exclude "node_modules/*" \
+          --delete
+          
+    - name: Set S3 cache headers
+      run: |
+        # Set cache headers for different file types
+        aws s3 cp s3://$S3_BUCKET/moon-lander.html s3://$S3_BUCKET/moon-lander.html \
+          --metadata-directive REPLACE \
+          --cache-control "public, max-age=300" \
+          --content-type "text/html"
+          
+        aws s3 cp s3://$S3_BUCKET/kiro-logo.png s3://$S3_BUCKET/kiro-logo.png \
+          --metadata-directive REPLACE \
+          --cache-control "public, max-age=31536000" \
+          --content-type "image/png"
+          
+    - name: Invalidate CloudFront cache
+      run: |
+        aws cloudfront create-invalidation \
+          --distribution-id $CLOUDFRONT_DISTRIBUTION_ID \
+          --paths "/*"
+          
+    - name: Deployment summary
+      run: |
+        echo "🚀 Deployment completed successfully!"
+        echo "📁 Files synced to S3 bucket: $S3_BUCKET"
+        echo "🌐 CloudFront cache invalidated for distribution: $CLOUDFRONT_DISTRIBUTION_ID"
+        echo "🎮 Moon Lander game is now live!"

@@ -1,11 +1,11 @@
 # Infrastructure Implementation Tasks
 
 ## Phase 1: Platform Selection & Initial Setup
-- [ ] **Task 1.1**: Choose hosting platform based on requirements
-  - [ ] Evaluate AWS (S3 + CloudFront + Route 53)
-- [ ] **Task 1.2**: Set up GitHub repository integration
-- [ ] **Task 1.3**: Configure basic static hosting
-- [ ] **Task 1.4**: Deploy current moon-lander.html for testing
+- [x] **Task 1.1**: Choose hosting platform based on requirements
+  - [x] Evaluate AWS (S3 + CloudFront + Route 53)
+- [x] **Task 1.2**: Set up GitHub repository integration
+- [x] **Task 1.3**: Configure basic static hosting
+- [x] **Task 1.4**: Deploy current moon-lander.html for testing
 
 ## Phase 2: Domain & SSL Configuration
 - [ ] **Task 2.1**: Configure custom domain (using provided zoneid/domain variables)

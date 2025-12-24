@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Retro Moon Lander</title>
+    <title>🎄 Christmas Moon Lander 🎅</title>
     <style>
         * {
             margin: 0;
@@ -117,6 +117,18 @@
         // Input tracking
         const keys = {};
         
+        // Snowflakes for Christmas atmosphere
+        const snowflakes = [];
+        for (let i = 0; i < 30; i++) {
+            snowflakes.push({
+                x: Math.random() * canvas.width,
+                y: Math.random() * canvas.height,
+                size: Math.random() * 3 + 1,
+                speed: Math.random() * 1 + 0.5,
+                opacity: Math.random() * 0.8 + 0.2
+            });
+        }
+        
         // Landing pads
         const landingPads = [
             { x: 100, y: canvas.height - 30, width: 80, height: 10, points: 1 },
@@ -215,6 +227,9 @@
                     scoringDelay.active = false;
                 }
             }
+            
+            // Update snowflakes
+            updateSnowflakes();
             
             // Check for out of fuel condition
             if (lander.fuel <= 0) {
@@ -329,6 +344,9 @@
             // Draw stars
             drawStars();
             
+            // Draw Christmas snowflakes
+            drawSnowflakes();
+            
             // Draw ground
             ctx.fillStyle = '#3a3a3a';
             ctx.fillRect(0, canvas.height - 20, canvas.width, 20);
@@ -372,6 +390,9 @@
                     ctx.textAlign = 'center';
                     ctx.fillText('BONUS', pad.x + pad.width / 2, pad.y - 15);
                 }
+                
+                // Draw Christmas reindeer on each pad
+                drawReindeer(pad.x + pad.width / 2, pad.y - 5, pad.points === 2);
             }
             
             // Draw lander
@@ -395,6 +416,134 @@
                 drawCrashedScreen();
             } else if (gameState === 'out_of_fuel') {
                 drawOutOfFuelScreen();
+            }
+        }
+        
+        function drawReindeer(x, y, isSpecial = false) {
+            ctx.save();
+            ctx.translate(x, y);
+            
+            // Scale down the reindeer to fit on pads
+            ctx.scale(0.8, 0.8);
+            
+            // Reindeer body
+            ctx.fillStyle = isSpecial ? '#8B4513' : '#A0522D'; // Special reindeer is darker brown
+            ctx.fillRect(-8, -12, 16, 8);
+            
+            // Reindeer head
+            ctx.fillStyle = isSpecial ? '#8B4513' : '#A0522D';
+            ctx.beginPath();
+            ctx.arc(-2, -18, 6, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Antlers
+            ctx.strokeStyle = '#654321';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            // Left antler
+            ctx.moveTo(-6, -22);
+            ctx.lineTo(-10, -28);
+            ctx.moveTo(-8, -25);
+            ctx.lineTo(-12, -26);
+            // Right antler
+            ctx.moveTo(2, -22);
+            ctx.lineTo(6, -28);
+            ctx.moveTo(4, -25);
+            ctx.lineTo(8, -26);
+            ctx.stroke();
+            
+            // Eyes
+            ctx.fillStyle = '#000000';
+            ctx.beginPath();
+            ctx.arc(-5, -18, 1, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(1, -18, 1, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Red nose (Rudolph style for special reindeer)
+            if (isSpecial) {
+                ctx.fillStyle = '#ff0000';
+                ctx.beginPath();
+                ctx.arc(-2, -15, 2, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Add glow effect to red nose
+                ctx.shadowBlur = 8;
+                ctx.shadowColor = '#ff0000';
+                ctx.beginPath();
+                ctx.arc(-2, -15, 2, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.shadowBlur = 0;
+            } else {
+                ctx.fillStyle = '#000000';
+                ctx.beginPath();
+                ctx.arc(-2, -15, 1, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            
+            // Legs
+            ctx.strokeStyle = isSpecial ? '#8B4513' : '#A0522D';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(-6, -4);
+            ctx.lineTo(-6, 0);
+            ctx.moveTo(-2, -4);
+            ctx.lineTo(-2, 0);
+            ctx.moveTo(2, -4);
+            ctx.lineTo(2, 0);
+            ctx.moveTo(6, -4);
+            ctx.lineTo(6, 0);
+            ctx.stroke();
+            
+            // Tail
+            ctx.fillStyle = isSpecial ? '#654321' : '#8B4513';
+            ctx.beginPath();
+            ctx.arc(8, -8, 2, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Christmas bell around neck
+            ctx.fillStyle = '#ffd700';
+            ctx.beginPath();
+            ctx.arc(-2, -12, 2, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Bell highlight
+            ctx.fillStyle = '#ffff00';
+            ctx.beginPath();
+            ctx.arc(-3, -13, 1, 0, Math.PI * 2);
+            ctx.fill();
+            
+            ctx.restore();
+        }
+        
+        function updateSnowflakes() {
+            for (let flake of snowflakes) {
+                flake.y += flake.speed;
+                flake.x += Math.sin(Date.now() / 1000 + flake.x / 100) * 0.5; // Gentle drift
+                
+                // Reset snowflake when it goes off screen
+                if (flake.y > canvas.height) {
+                    flake.y = -10;
+                    flake.x = Math.random() * canvas.width;
+                }
+                if (flake.x > canvas.width) {
+                    flake.x = 0;
+                } else if (flake.x < 0) {
+                    flake.x = canvas.width;
+                }
+            }
+        }
+        
+        function drawSnowflakes() {
+            for (let flake of snowflakes) {
+                ctx.save();
+                ctx.globalAlpha = flake.opacity;
+                ctx.fillStyle = '#ffffff';
+                ctx.beginPath();
+                ctx.arc(flake.x, flake.y, flake.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
             }
         }
         
@@ -426,7 +575,47 @@
                 ctx.fillRect(-lander.width / 2, -lander.height / 2, lander.width, lander.height);
             }
             
+            // Draw Santa's hat on top of Kiro
+            drawSantaHat();
+            
             ctx.restore();
+        }
+        
+        function drawSantaHat() {
+            // Santa's hat on top of the lander
+            const hatWidth = 35;
+            const hatHeight = 25;
+            const hatX = -hatWidth / 2;
+            const hatY = -lander.height / 2 - hatHeight + 5;
+            
+            // Hat body (red)
+            ctx.fillStyle = '#dc143c';
+            ctx.beginPath();
+            ctx.moveTo(hatX, hatY + hatHeight);
+            ctx.lineTo(hatX + hatWidth * 0.2, hatY);
+            ctx.lineTo(hatX + hatWidth * 0.8, hatY + hatHeight * 0.3);
+            ctx.lineTo(hatX + hatWidth, hatY + hatHeight);
+            ctx.closePath();
+            ctx.fill();
+            
+            // Hat brim (white)
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(hatX - 2, hatY + hatHeight - 3, hatWidth + 4, 6);
+            
+            // Pom pom
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath();
+            ctx.arc(hatX + hatWidth * 0.8, hatY + hatHeight * 0.3 - 3, 4, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Add some sparkle to the hat
+            ctx.fillStyle = '#ffff00';
+            ctx.beginPath();
+            ctx.arc(hatX + hatWidth * 0.3, hatY + hatHeight * 0.6, 1, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(hatX + hatWidth * 0.6, hatY + hatHeight * 0.8, 1, 0, Math.PI * 2);
+            ctx.fill();
         }
         
         function drawJetpack() {
@@ -455,9 +644,9 @@
             ctx.fillRect(0, 0, canvas.width, canvas.height);
             
             ctx.fillStyle = '#ff8c00';
-            ctx.font = 'bold 48px Courier New';
+            ctx.font = 'bold 42px Courier New';
             ctx.textAlign = 'center';
-            ctx.fillText('RETRO MOON LANDER', canvas.width / 2, canvas.height / 2 - 80);
+            ctx.fillText('🎄 CHRISTMAS MOON LANDER 🎅', canvas.width / 2, canvas.height / 2 - 80);
             
             ctx.fillStyle = '#cccccc';
             ctx.font = '24px Courier New';
@@ -466,9 +655,9 @@
             ctx.fillText('UP / SPACE: Main Thrust', canvas.width / 2, canvas.height / 2 + 10);
             ctx.fillText('LEFT / RIGHT: Side Thrust', canvas.width / 2, canvas.height / 2 + 40);
             
-            ctx.fillStyle = '#ff8c00';
+            ctx.fillStyle = '#dc143c';
             ctx.font = 'bold 20px Courier New';
-            ctx.fillText('Land gently on orange pads!', canvas.width / 2, canvas.height / 2 + 90);
+            ctx.fillText('Help Santa land on the reindeer pads!', canvas.width / 2, canvas.height / 2 + 90);
             
             ctx.fillStyle = '#ffaa33';
             ctx.font = '24px Courier New';
@@ -480,17 +669,17 @@
             ctx.fillRect(0, 0, canvas.width, canvas.height);
             
             ctx.fillStyle = '#00ff00';
-            ctx.font = 'bold 48px Courier New';
+            ctx.font = 'bold 42px Courier New';
             ctx.textAlign = 'center';
-            ctx.fillText('SUCCESSFUL LANDING!', canvas.width / 2, canvas.height / 2 - 40);
+            ctx.fillText('🎅 SANTA LANDED! 🦌', canvas.width / 2, canvas.height / 2 - 40);
             
             ctx.fillStyle = '#ffaa33';
             ctx.font = '24px Courier New';
-            ctx.fillText('Fuel Refilled!', canvas.width / 2, canvas.height / 2 + 10);
+            ctx.fillText('Reindeer are happy! Fuel Refilled!', canvas.width / 2, canvas.height / 2 + 10);
             
             ctx.fillStyle = '#cccccc';
             ctx.font = '20px Courier New';
-            ctx.fillText('Press THRUST to Take Off', canvas.width / 2, canvas.height / 2 + 60);
+            ctx.fillText('Press THRUST to Continue Christmas Delivery', canvas.width / 2, canvas.height / 2 + 60);
         }
         
         function drawScoringDelayIndicator() {
